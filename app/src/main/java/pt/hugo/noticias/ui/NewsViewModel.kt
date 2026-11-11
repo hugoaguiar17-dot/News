@@ -11,19 +11,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import pt.hugo.noticias.data.Article
-import pt.hugo.noticias.data.DefaultSources
 import pt.hugo.noticias.data.FullArticle
+import pt.hugo.noticias.data.Http
 import pt.hugo.noticias.data.NewsRepository
 import pt.hugo.noticias.data.Prefs
 import pt.hugo.noticias.data.Region
 import pt.hugo.noticias.data.Source
-import java.util.concurrent.TimeUnit
+import pt.hugo.noticias.notify.NewsCheckWorker
 
 enum class FeedTab(val label: String) { ALL("Tudo"), PT("Portugal"), SPORT("Desporto"), EN("Mundo") }
 
-data class SourceItem(val source: Source, val enabled: Boolean)
+data class SourceItem(val source: Source, val enabled: Boolean, val notify: Boolean)
 
 data class FeedState(
     val loading: Boolean = false,
@@ -43,12 +44,7 @@ sealed interface ReaderState {
 class NewsViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = Prefs(app)
-    private val repo = NewsRepository(
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .build()
-    )
+    private val repo = NewsRepository(Http.client)
 
     private val _sources = MutableStateFlow(loadSources())
     val sources: StateFlow<List<SourceItem>> = _sources.asStateFlow()
@@ -67,9 +63,20 @@ class NewsViewModel(app: Application) : AndroidViewModel(app) {
     private var readerJob: Job? = null
     private var sourcesChanged = false
 
+    init {
+        NewsCheckWorker.schedule(app)
+    }
+
     private fun loadSources(): List<SourceItem> {
         val disabled = prefs.disabledIds
-        return (DefaultSources.all + prefs.customSources).map { SourceItem(it, it.id !in disabled) }
+        val notify = prefs.notifyIds
+        return prefs.allSources.map { SourceItem(it, it.id !in disabled, it.id in notify) }
+    }
+
+    fun toggleNotify(id: String, on: Boolean) {
+        prefs.notifyIds = if (on) prefs.notifyIds + id else prefs.notifyIds - id
+        _sources.value = loadSources()
+        NewsCheckWorker.schedule(getApplication())
     }
 
     fun refresh() {
@@ -78,6 +85,8 @@ class NewsViewModel(app: Application) : AndroidViewModel(app) {
             _feed.update { it.copy(loading = true) }
             val enabled = _sources.value.filter { it.enabled }.map { it.source }
             val result = repo.fetchAll(enabled)
+            // O que já apareceu na app não volta a ser notificado.
+            withContext(Dispatchers.IO) { prefs.markSeen(result.articles.map { it.id }) }
             _feed.update {
                 it.copy(
                     loading = false,
@@ -113,6 +122,7 @@ class NewsViewModel(app: Application) : AndroidViewModel(app) {
         prefs.disabledIds = if (enabled) prefs.disabledIds - id else prefs.disabledIds + id
         _sources.value = loadSources()
         sourcesChanged = true
+        NewsCheckWorker.schedule(getApplication())
     }
 
     /** Devolve uma mensagem de erro, ou null se correu bem. */
@@ -130,6 +140,8 @@ class NewsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeCustomSource(id: String) {
         prefs.customSources = prefs.customSources.filterNot { it.id == id }
+        prefs.notifyIds = prefs.notifyIds - id
+        NewsCheckWorker.schedule(getApplication())
         _sources.value = loadSources()
         sourcesChanged = true
     }

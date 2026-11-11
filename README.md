@@ -9,6 +9,7 @@ App Android com notícias de última hora de fontes **gratuitas**, portuguesas e
 - Leitor do artigo completo (texto, imagens, citações), com tamanho de letra ajustável
 - Se o texto não for extraído, abre a página original dentro da app
 - Ecrã **Fontes**: ligar/desligar fontes e adicionar qualquer feed RSS
+- **Notificações**: toca no sino de cada fonte para seres avisado das notícias novas (verificação ~15 em 15 min; tocar na notificação abre o artigo)
 
 ## Fontes incluídas
 **Portugal:** RTP Notícias, Notícias ao Minuto, SIC Notícias, CNN Portugal, TSF, Euronews PT

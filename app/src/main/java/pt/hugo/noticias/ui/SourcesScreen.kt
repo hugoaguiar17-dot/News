@@ -1,6 +1,13 @@
 package pt.hugo.noticias.ui
 
+import android.Manifest
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.ui.platform.LocalContext
+import pt.hugo.noticias.notify.Notifier
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,6 +54,8 @@ fun SourcesScreen(vm: NewsViewModel, onBack: () -> Unit) {
     var url by remember { mutableStateOf("") }
     var region by remember { mutableStateOf(Region.PT) }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     Scaffold(
         topBar = {
@@ -59,6 +68,15 @@ fun SourcesScreen(vm: NewsViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         LazyColumn(Modifier.padding(padding)) {
+            item(key = "notify_hint") {
+                Text(
+                    "Toca no sino para receberes notificações das notícias novas dessa fonte. " +
+                        "O Android verifica cerca de 15 em 15 minutos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                )
+            }
             listOf(
                 Region.PT to "Portugal",
                 Region.SPORT to "Desporto",
@@ -71,6 +89,22 @@ fun SourcesScreen(vm: NewsViewModel, onBack: () -> Unit) {
                         supportingContent = { Text(Uri.parse(item.source.url).host ?: item.source.url) },
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    enabled = item.enabled,
+                                    onClick = {
+                                        val turnOn = !item.notify
+                                        if (turnOn && !Notifier.canNotify(context)) {
+                                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                        vm.toggleNotify(item.source.id, turnOn)
+                                    },
+                                ) {
+                                    if (item.notify && item.enabled) {
+                                        Icon(Icons.Filled.Notifications, "Desligar notificações", tint = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        Icon(Icons.Outlined.Notifications, "Ligar notificações")
+                                    }
+                                }
                                 if (item.source.custom) {
                                     IconButton(onClick = { vm.removeCustomSource(item.source.id) }) {
                                         Icon(Icons.Filled.Delete, "Remover")
